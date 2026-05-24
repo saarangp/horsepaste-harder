@@ -11,7 +11,8 @@ RUN apk add gcc musl-dev \
 FROM node:12 as frontend
 COPY . /app
 WORKDIR /app/frontend
-RUN npm install -g parcel-bundler \
+RUN npm config set unsafe-perm true \
+    && npm install -g parcel-bundler \
     && npm install \
     && sh build.sh
 
