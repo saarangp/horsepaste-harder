@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/pprof"
@@ -397,7 +398,7 @@ func (s *Server) Start(games map[string]*Game) error {
 	// Load the precomputed nearest-neighbor table used by hard mode. A
 	// missing file is non-fatal: hard mode simply falls back to a random
 	// board when no neighbor data is available.
-	if nb, err := os.ReadFile("assets/neighbors.json"); err != nil {
+	if nb, err := ioutil.ReadFile("assets/neighbors.json"); err != nil {
 		log.Printf("Hard mode disabled: unable to read assets/neighbors.json: %s\n", err)
 	} else if err := json.Unmarshal(nb, &s.neighbors); err != nil {
 		log.Printf("Hard mode disabled: unable to parse assets/neighbors.json: %s\n", err)
