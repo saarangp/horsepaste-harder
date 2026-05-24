@@ -35,6 +35,7 @@ type Server struct {
 	mu           sync.Mutex
 	games        map[string]*GameHandle
 	defaultWords []string
+	neighbors    map[string][]string
 	mux          *http.ServeMux
 
 	statOpenRequests  int64 // atomic access
@@ -130,7 +131,7 @@ func (s *Server) getGame(gameID string) *GameHandle {
 	if ok {
 		return gh
 	}
-	gh = newHandle(newGame(gameID, randomState(s.defaultWords), GameOptions{}), s.Store)
+	gh = newHandle(newGame(gameID, randomState(s.defaultWords), GameOptions{}, s.neighbors), s.Store)
 	s.games[gameID] = gh
 	return gh
 }
@@ -219,6 +220,7 @@ func (s *Server) handleNextGame(rw http.ResponseWriter, req *http.Request) {
 		CreateNew       bool     `json:"create_new"`
 		TimerDurationMS int64    `json:"timer_duration_ms"`
 		EnforceTimer    bool     `json:"enforce_timer"`
+		HardMode        bool     `json:"hard_mode"`
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
@@ -244,7 +246,9 @@ func (s *Server) handleNextGame(rw http.ResponseWriter, req *http.Request) {
 		defer s.mu.Unlock()
 
 		words := s.defaultWords
-		if len(wordSet) > 0 {
+		// Hard mode draws only from the built-in word list, which is the
+		// only set we have precomputed neighbor data for.
+		if len(wordSet) > 0 && !request.HardMode {
 			words = nil
 			for w := range wordSet {
 				words = append(words, w)
@@ -255,13 +259,14 @@ func (s *Server) handleNextGame(rw http.ResponseWriter, req *http.Request) {
 		opts := GameOptions{
 			TimerDurationMS: request.TimerDurationMS,
 			EnforceTimer:    request.EnforceTimer,
+			HardMode:        request.HardMode,
 		}
 
 		var ok bool
 		gh, ok = s.games[request.GameID]
 		if !ok {
 			// no game exists, create for the first time
-			gh = newHandle(newGame(request.GameID, randomState(words), opts), s.Store)
+			gh = newHandle(newGame(request.GameID, randomState(words), opts, s.neighbors), s.Store)
 			s.games[request.GameID] = gh
 		} else if request.CreateNew {
 			replacedCh := gh.replaced
@@ -269,7 +274,7 @@ func (s *Server) handleNextGame(rw http.ResponseWriter, req *http.Request) {
 			previousGame := gh.g
 
 			nextState := nextGameState(gh.g.GameState)
-			gh = newHandle(newGame(request.GameID, nextState, opts), s.Store)
+			gh = newHandle(newGame(request.GameID, nextState, opts, s.neighbors), s.Store)
 			s.games[request.GameID] = gh
 
 			// signal to waiting /game-state goroutines that the
@@ -388,6 +393,16 @@ func (s *Server) Start(games map[string]*Game) error {
 	s.games = make(map[string]*GameHandle)
 	s.defaultWords = d.Words()
 	sort.Strings(s.defaultWords)
+
+	// Load the precomputed nearest-neighbor table used by hard mode. A
+	// missing file is non-fatal: hard mode simply falls back to a random
+	// board when no neighbor data is available.
+	if nb, err := os.ReadFile("assets/neighbors.json"); err != nil {
+		log.Printf("Hard mode disabled: unable to read assets/neighbors.json: %s\n", err)
+	} else if err := json.Unmarshal(nb, &s.neighbors); err != nil {
+		log.Printf("Hard mode disabled: unable to parse assets/neighbors.json: %s\n", err)
+		s.neighbors = nil
+	}
 	s.Server.Handler = withPProfHandler(s)
 
 	if s.Store == nil {
