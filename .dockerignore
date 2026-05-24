@@ -1,0 +1,6 @@
+.git
+db
+**/node_modules
+frontend/dist
+horsepaste
+main

@@ -6,7 +6,9 @@ RUN apk add gcc musl-dev \
     && go build ./cmd/horsepaste/main.go
 
 # Build frontend.
-FROM node:12-alpine as frontend
+# Use the Debian-based node:12 image (not alpine): it ships gcc/g++/make and
+# python, which parcel-bundler's native dependency (deasync) needs to compile.
+FROM node:12 as frontend
 COPY . /app
 WORKDIR /app/frontend
 RUN npm install -g parcel-bundler \
