@@ -1,6 +1,7 @@
 import * as React from 'react';
 import axios from 'axios';
 import { Settings, SettingsButton, SettingsPanel } from '~/ui/settings';
+import { SimilarityGraph } from '~/ui/similarity_graph';
 import Timer from '~/ui/timer';
 
 const defaultFavicon =
@@ -18,6 +19,7 @@ export class Game extends React.Component {
       settings: Settings.load(),
       mode: 'game',
       cluegiver: false,
+      showGraph: false,
     };
   }
 
@@ -239,6 +241,7 @@ export class Game extends React.Component {
         timer_duration_ms: this.state.game.timer_duration_ms,
         enforce_timer: this.state.game.enforce_timer,
         hard_mode: this.state.game.hard_mode,
+        dissimilar_mode: this.state.game.dissimilar_mode,
       })
       .then(({ data }) => {
         this.setState({ game: data, cluegiver: false });
@@ -424,7 +427,30 @@ export class Game extends React.Component {
           <button onClick={(e) => this.nextGame(e)} id="next-game-btn">
             Next game
           </button>
+          {this.state.game.similarity && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                this.setState({ showGraph: !this.state.showGraph });
+              }}
+              id="graph-btn"
+              className={this.state.showGraph ? 'active' : ''}
+            >
+              {this.state.showGraph ? 'Hide graph' : 'Graph'}
+            </button>
+          )}
         </form>
+        {this.state.showGraph && this.state.game.similarity && (
+          <SimilarityGraph
+            words={this.state.game.words}
+            layout={this.state.game.layout}
+            revealed={this.state.game.revealed}
+            similarity={this.state.game.similarity}
+            cluegiver={this.state.cluegiver}
+            winningTeam={this.state.game.winning_team}
+            darkMode={this.state.settings.darkMode}
+          />
+        )}
         <div id="coffee">Fuck ICE, Trump, and all fascist enablers. ✊</div>
       </div>
     );

@@ -117,14 +117,15 @@ func nextGameState(state GameState) GameState {
 
 type Game struct {
 	GameState
-	ID             string    `json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	StartingTeam   Team      `json:"starting_team"`
-	WinningTeam    *Team     `json:"winning_team,omitempty"`
-	Words          []string  `json:"words"`
-	Layout         []Team    `json:"layout"`
-	RoundStartedAt time.Time `json:"round_started_at,omitempty"`
+	ID             string      `json:"id"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+	StartingTeam   Team        `json:"starting_team"`
+	WinningTeam    *Team       `json:"winning_team,omitempty"`
+	Words          []string    `json:"words"`
+	Layout         []Team      `json:"layout"`
+	Similarity     [][]float64 `json:"similarity,omitempty"`
+	RoundStartedAt time.Time   `json:"round_started_at,omitempty"`
 	GameOptions
 }
 
@@ -132,6 +133,7 @@ type GameOptions struct {
 	TimerDurationMS int64 `json:"timer_duration_ms,omitempty"`
 	EnforceTimer    bool  `json:"enforce_timer,omitempty"`
 	HardMode        bool  `json:"hard_mode,omitempty"`
+	DissimilarMode  bool  `json:"dissimilar_mode,omitempty"`
 }
 
 func (g *Game) StateID() string {
@@ -210,7 +212,7 @@ func (g *Game) currentTeam() Team {
 	return g.StartingTeam.Other()
 }
 
-func newGame(id string, state GameState, opts GameOptions, neighbors map[string][]string) *Game {
+func newGame(id string, state GameState, opts GameOptions, neighbors map[string][]string, simData map[string]map[string]float64, dissimilarBoards [][]string) *Game {
 	// consistent randomness across games with the same seed
 	seedRnd := rand.New(rand.NewSource(state.Seed))
 	// distinct randomness across games with same seed
@@ -235,13 +237,17 @@ func newGame(id string, state GameState, opts GameOptions, neighbors map[string]
 	var blackWord string
 	var clustered []string
 	hardMode := opts.HardMode
+	dissimilarMode := opts.DissimilarMode && !hardMode
 	if hardMode {
 		// Use randRnd so paginated "next game"s with the same seed but a
 		// different PermIndex produce different boards.
 		blackWord, clustered, hardMode = hardModeWords(randRnd, state.WordSet, neighbors)
 	}
+	if dissimilarMode {
+		blackWord, clustered, dissimilarMode = dissimilarModeWords(randRnd, dissimilarBoards)
+	}
 
-	if !hardMode {
+	if !hardMode && !dissimilarMode {
 		// Pick the next `wordsPerGame` words from the
 		// randomly generated permutation
 		perm := seedRnd.Perm(len(state.WordSet))
@@ -266,9 +272,9 @@ func newGame(id string, state GameState, opts GameOptions, neighbors map[string]
 	}
 	game.Layout = teamAssignments
 
-	if hardMode {
-		// Place the chosen assassin on the Black tile and the clustered
-		// neighbors on every other tile, preserving the random role layout.
+	if hardMode || dissimilarMode {
+		// Place the chosen black word on the Black tile and the remaining
+		// words on every other tile, preserving the random role layout.
 		game.Words = make([]string, wordsPerGame)
 		var next int
 		for i, t := range game.Layout {
@@ -280,6 +286,31 @@ func newGame(id string, state GameState, opts GameOptions, neighbors map[string]
 			next++
 		}
 	}
+
+	if len(simData) > 0 {
+		hasData := false
+		for _, w := range game.Words {
+			if _, ok := simData[w]; ok {
+				hasData = true
+				break
+			}
+		}
+		if hasData {
+			game.Similarity = make([][]float64, wordsPerGame)
+			for i, w1 := range game.Words {
+				game.Similarity[i] = make([]float64, wordsPerGame)
+				scores := simData[w1]
+				for j, w2 := range game.Words {
+					if i == j {
+						game.Similarity[i][j] = 1.0
+					} else if scores != nil {
+						game.Similarity[i][j] = scores[w2]
+					}
+				}
+			}
+		}
+	}
+
 	return game
 }
 
@@ -335,6 +366,27 @@ func hardModeWords(seedRnd *rand.Rand, words []string, neighbors map[string][]st
 		chosen = append(chosen, pool[i])
 	}
 	return black, chosen, true
+}
+
+// dissimilarModeWords picks a random precomputed board of maximally spread-out
+// words and selects one of them at random as the black (assassin) tile.
+func dissimilarModeWords(rnd *rand.Rand, boards [][]string) (black string, others []string, ok bool) {
+	if len(boards) == 0 {
+		return "", nil, false
+	}
+	board := boards[rnd.Intn(len(boards))]
+	if len(board) < wordsPerGame {
+		return "", nil, false
+	}
+	blackIdx := rnd.Intn(wordsPerGame)
+	black = board[blackIdx]
+	others = make([]string, 0, wordsPerGame-1)
+	for i, w := range board[:wordsPerGame] {
+		if i != blackIdx {
+			others = append(others, w)
+		}
+	}
+	return black, others, true
 }
 
 func shuffle(rnd *rand.Rand, teamAssignments []Team) {

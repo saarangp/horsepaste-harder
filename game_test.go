@@ -29,7 +29,7 @@ func BenchmarkGameMarshal(b *testing.B) {
 		Round:    0,
 		Revealed: make([]bool, 25),
 		WordSet:  d.Words(),
-	}, GameOptions{}, nil)
+	}, GameOptions{}, nil, nil, nil)
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		_, err = json.Marshal(g)
@@ -47,7 +47,7 @@ func TestGameShuffle(t *testing.T) {
 
 	m := map[string]int{}
 	for i := 0; i < gamesWithoutRepeats; i++ {
-		g := newGame("foo", currState, GameOptions{}, nil)
+		g := newGame("foo", currState, GameOptions{}, nil, nil)
 		for _, w := range g.Words {
 			if prevI, ok := m[w]; ok {
 				t.Errorf("Word %q appeared twice, once in game %d and once in game %d.", w, prevI, i)
@@ -99,7 +99,7 @@ func TestHardModeBoard(t *testing.T) {
 
 	state := randomState(words)
 	state.Seed = 42
-	g := newGame("foo", state, GameOptions{HardMode: true}, full)
+	g := newGame("foo", state, GameOptions{HardMode: true}, full, nil)
 
 	if len(g.Words) != wordsPerGame {
 		t.Fatalf("expected %d words, got %d", wordsPerGame, len(g.Words))
@@ -124,7 +124,7 @@ func TestHardModeBoard(t *testing.T) {
 	}
 
 	// Determinism: same seed and inputs must reproduce the same board.
-	g2 := newGame("foo", state, GameOptions{HardMode: true}, full)
+	g2 := newGame("foo", state, GameOptions{HardMode: true}, full, nil)
 	for i := range g.Words {
 		if g.Words[i] != g2.Words[i] || g.Layout[i] != g2.Layout[i] {
 			t.Fatalf("hard mode board not deterministic at index %d", i)

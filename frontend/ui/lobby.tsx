@@ -17,6 +17,7 @@ export const Lobby = ({ defaultGameID }) => {
   const [timer, setTimer] = React.useState(null);
   const [enforceTimerEnabled, setEnforceTimerEnabled] = React.useState(false);
   const [hardMode, setHardMode] = React.useState(false);
+  const [dissimilarMode, setDissimilarMode] = React.useState(false);
 
   let selectedWordCount = selectedWordSets
     .map((l) => words[l].length)
@@ -52,6 +53,7 @@ export const Lobby = ({ defaultGameID }) => {
           timer && timer.length ? timer[0] * 60 * 1000 + timer[1] * 1000 : 0,
         enforce_timer: timer && timer.length && enforceTimerEnabled,
         hard_mode: hardMode,
+        dissimilar_mode: dissimilarMode,
       })
       .then(() => {
         const newURL = (document.location.pathname = '/' + newGameName);
@@ -123,6 +125,19 @@ export const Lobby = ({ defaultGameID }) => {
             }}
             values={{ hardMode }}
             handleToggle={() => setHardMode(!hardMode)}
+          />
+
+          <ToggleSet
+            toggle={{
+              name: 'Chaos mode',
+              setting: 'dissimilarMode',
+              desc:
+                'Fills the board with words that are as semantically ' +
+                'unrelated to each other as possible (word2vec). ' +
+                'Uses the default word list.',
+            }}
+            values={{ dissimilarMode }}
+            handleToggle={() => setDissimilarMode(!dissimilarMode)}
           />
 
           <div id="new-game-options">

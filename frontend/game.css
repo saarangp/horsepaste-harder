@@ -108,8 +108,27 @@
   color: #999;
 }
 
-#next-game-btn {
+#next-game-btn,
+#graph-btn {
   margin-left: 10px;
+}
+
+#graph-btn.active {
+  background: #d4e8d0;
+}
+.dark-mode #graph-btn.active {
+  background: #3a5a3a;
+}
+
+.similarity-graph {
+  display: block;
+  margin: 1em auto 0;
+}
+
+.similarity-graph-empty {
+  text-align: center;
+  color: #999;
+  padding: 2em;
 }
 
 .cell {

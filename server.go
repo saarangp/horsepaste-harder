@@ -36,7 +36,9 @@ type Server struct {
 	mu           sync.Mutex
 	games        map[string]*GameHandle
 	defaultWords []string
-	neighbors    map[string][]string
+	neighbors        map[string][]string
+	similarity       map[string]map[string]float64
+	dissimilarBoards [][]string
 	mux          *http.ServeMux
 
 	statOpenRequests  int64 // atomic access
@@ -132,7 +134,7 @@ func (s *Server) getGame(gameID string) *GameHandle {
 	if ok {
 		return gh
 	}
-	gh = newHandle(newGame(gameID, randomState(s.defaultWords), GameOptions{}, s.neighbors), s.Store)
+	gh = newHandle(newGame(gameID, randomState(s.defaultWords), GameOptions{}, s.neighbors, s.similarity, s.dissimilarBoards), s.Store)
 	s.games[gameID] = gh
 	return gh
 }
@@ -222,6 +224,7 @@ func (s *Server) handleNextGame(rw http.ResponseWriter, req *http.Request) {
 		TimerDurationMS int64    `json:"timer_duration_ms"`
 		EnforceTimer    bool     `json:"enforce_timer"`
 		HardMode        bool     `json:"hard_mode"`
+		DissimilarMode  bool     `json:"dissimilar_mode"`
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
@@ -247,9 +250,9 @@ func (s *Server) handleNextGame(rw http.ResponseWriter, req *http.Request) {
 		defer s.mu.Unlock()
 
 		words := s.defaultWords
-		// Hard mode draws only from the built-in word list, which is the
-		// only set we have precomputed neighbor data for.
-		if len(wordSet) > 0 && !request.HardMode {
+		// Hard mode and dissimilar mode draw only from the built-in word list,
+		// which is the only set we have precomputed data for.
+		if len(wordSet) > 0 && !request.HardMode && !request.DissimilarMode {
 			words = nil
 			for w := range wordSet {
 				words = append(words, w)
@@ -261,13 +264,14 @@ func (s *Server) handleNextGame(rw http.ResponseWriter, req *http.Request) {
 			TimerDurationMS: request.TimerDurationMS,
 			EnforceTimer:    request.EnforceTimer,
 			HardMode:        request.HardMode,
+			DissimilarMode:  request.DissimilarMode,
 		}
 
 		var ok bool
 		gh, ok = s.games[request.GameID]
 		if !ok {
 			// no game exists, create for the first time
-			gh = newHandle(newGame(request.GameID, randomState(words), opts, s.neighbors), s.Store)
+			gh = newHandle(newGame(request.GameID, randomState(words), opts, s.neighbors, s.similarity, s.dissimilarBoards), s.Store)
 			s.games[request.GameID] = gh
 		} else if request.CreateNew {
 			replacedCh := gh.replaced
@@ -275,7 +279,7 @@ func (s *Server) handleNextGame(rw http.ResponseWriter, req *http.Request) {
 			previousGame := gh.g
 
 			nextState := nextGameState(gh.g.GameState)
-			gh = newHandle(newGame(request.GameID, nextState, opts, s.neighbors), s.Store)
+			gh = newHandle(newGame(request.GameID, nextState, opts, s.neighbors, s.similarity, s.dissimilarBoards), s.Store)
 			s.games[request.GameID] = gh
 
 			// signal to waiting /game-state goroutines that the
@@ -403,6 +407,20 @@ func (s *Server) Start(games map[string]*Game) error {
 	} else if err := json.Unmarshal(nb, &s.neighbors); err != nil {
 		log.Printf("Hard mode disabled: unable to parse assets/neighbors.json: %s\n", err)
 		s.neighbors = nil
+	}
+
+	if sb, err := ioutil.ReadFile("assets/similarity.json"); err != nil {
+		log.Printf("Similarity graph disabled: unable to read assets/similarity.json: %s\n", err)
+	} else if err := json.Unmarshal(sb, &s.similarity); err != nil {
+		log.Printf("Similarity graph disabled: unable to parse assets/similarity.json: %s\n", err)
+		s.similarity = nil
+	}
+
+	if db, err := ioutil.ReadFile("assets/dissimilar_boards.json"); err != nil {
+		log.Printf("Dissimilar mode disabled: unable to read assets/dissimilar_boards.json: %s\n", err)
+	} else if err := json.Unmarshal(db, &s.dissimilarBoards); err != nil {
+		log.Printf("Dissimilar mode disabled: unable to parse assets/dissimilar_boards.json: %s\n", err)
+		s.dissimilarBoards = nil
 	}
 	s.Server.Handler = withPProfHandler(s)
 
