@@ -238,6 +238,7 @@ export class Game extends React.Component {
         create_new: true,
         timer_duration_ms: this.state.game.timer_duration_ms,
         enforce_timer: this.state.game.enforce_timer,
+        hard_mode: this.state.game.hard_mode,
       })
       .then(({ data }) => {
         this.setState({ game: data, cluegiver: false });
@@ -337,8 +338,7 @@ export class Game extends React.Component {
       <div
         id="game-view"
         className={
-          (this.state.cluegiver ? 'cluegiver' : 'player') +
-          this.extraClasses()
+          (this.state.cluegiver ? 'cluegiver' : 'player') + this.extraClasses()
         }
       >
         <div id="infoContent">
@@ -425,9 +425,7 @@ export class Game extends React.Component {
             Next game
           </button>
         </form>
-        <div id="coffee">
-          Fuck ICE, Trump, and all fascist enablers. ✊
-        </div>
+        <div id="coffee">Fuck ICE, Trump, and all fascist enablers. ✊</div>
       </div>
     );
   }

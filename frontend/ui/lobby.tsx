@@ -3,6 +3,7 @@ import axios from 'axios';
 import CustomWords from '~/ui/custom_words';
 import WordSetToggle from '~/ui/wordset_toggle';
 import TimerSettings from '~/ui/timer_settings';
+import ToggleSet from '~/ui/toggle-set';
 import OriginalWords from '~/words.json';
 
 export const Lobby = ({ defaultGameID }) => {
@@ -15,6 +16,7 @@ export const Lobby = ({ defaultGameID }) => {
   const [warning, setWarning] = React.useState(null);
   const [timer, setTimer] = React.useState(null);
   const [enforceTimerEnabled, setEnforceTimerEnabled] = React.useState(false);
+  const [hardMode, setHardMode] = React.useState(false);
 
   let selectedWordCount = selectedWordSets
     .map((l) => words[l].length)
@@ -49,6 +51,7 @@ export const Lobby = ({ defaultGameID }) => {
         timer_duration_ms:
           timer && timer.length ? timer[0] * 60 * 1000 + timer[1] * 1000 : 0,
         enforce_timer: timer && timer.length && enforceTimerEnabled,
+        hard_mode: hardMode,
       })
       .then(() => {
         const newURL = (document.location.pathname = '/' + newGameName);
@@ -108,6 +111,18 @@ export const Lobby = ({ defaultGameID }) => {
               enforceTimerEnabled,
               setEnforceTimerEnabled,
             }}
+          />
+
+          <ToggleSet
+            toggle={{
+              name: 'Hard mode',
+              setting: 'hardMode',
+              desc:
+                'Picks a random assassin, then fills the board with words ' +
+                'closest to it (word2vec). Uses the default word list.',
+            }}
+            values={{ hardMode }}
+            handleToggle={() => setHardMode(!hardMode)}
           />
 
           <div id="new-game-options">

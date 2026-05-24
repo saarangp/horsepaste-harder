@@ -131,6 +131,7 @@ type Game struct {
 type GameOptions struct {
 	TimerDurationMS int64 `json:"timer_duration_ms,omitempty"`
 	EnforceTimer    bool  `json:"enforce_timer,omitempty"`
+	HardMode        bool  `json:"hard_mode,omitempty"`
 }
 
 func (g *Game) StateID() string {
@@ -209,7 +210,7 @@ func (g *Game) currentTeam() Team {
 	return g.StartingTeam.Other()
 }
 
-func newGame(id string, state GameState, opts GameOptions) *Game {
+func newGame(id string, state GameState, opts GameOptions, neighbors map[string][]string) *Game {
 	// consistent randomness across games with the same seed
 	seedRnd := rand.New(rand.NewSource(state.Seed))
 	// distinct randomness across games with same seed
@@ -227,13 +228,28 @@ func newGame(id string, state GameState, opts GameOptions) *Game {
 		GameOptions:    opts,
 	}
 
-	// Pick the next `wordsPerGame` words from the
-	// randomly generated permutation
-	perm := seedRnd.Perm(len(state.WordSet))
-	permIndex := state.PermIndex
-	for _, i := range perm[permIndex : permIndex+wordsPerGame] {
-		w := state.WordSet[perm[i]]
-		game.Words = append(game.Words, w)
+	// In hard mode, pick a random assassin word and fill the board with its
+	// nearest semantic neighbors. The chosen word is forced onto the Black
+	// tile below. Fall back to the normal random board if a suitable cluster
+	// can't be built (e.g. missing neighbor data).
+	var blackWord string
+	var clustered []string
+	hardMode := opts.HardMode
+	if hardMode {
+		// Use randRnd so paginated "next game"s with the same seed but a
+		// different PermIndex produce different boards.
+		blackWord, clustered, hardMode = hardModeWords(randRnd, state.WordSet, neighbors)
+	}
+
+	if !hardMode {
+		// Pick the next `wordsPerGame` words from the
+		// randomly generated permutation
+		perm := seedRnd.Perm(len(state.WordSet))
+		permIndex := state.PermIndex
+		for _, i := range perm[permIndex : permIndex+wordsPerGame] {
+			w := state.WordSet[perm[i]]
+			game.Words = append(game.Words, w)
+		}
 	}
 
 	// Pick a random permutation of team assignments.
@@ -249,7 +265,76 @@ func newGame(id string, state GameState, opts GameOptions) *Game {
 		shuffle(randRnd, teamAssignments)
 	}
 	game.Layout = teamAssignments
+
+	if hardMode {
+		// Place the chosen assassin on the Black tile and the clustered
+		// neighbors on every other tile, preserving the random role layout.
+		game.Words = make([]string, wordsPerGame)
+		var next int
+		for i, t := range game.Layout {
+			if t == Black {
+				game.Words[i] = blackWord
+				continue
+			}
+			game.Words[i] = clustered[next]
+			next++
+		}
+	}
 	return game
+}
+
+// hardModeWords picks a random assassin word from words and returns it along
+// with wordsPerGame-1 of its nearest neighbors (also drawn from words). It
+// samples loosely from a pool of the closest neighbors so boards vary across
+// games. ok is false if no word has enough in-set neighbors to fill a board.
+func hardModeWords(seedRnd *rand.Rand, words []string, neighbors map[string][]string) (black string, others []string, ok bool) {
+	const needed = wordsPerGame - 1
+	if len(neighbors) == 0 {
+		return "", nil, false
+	}
+
+	inSet := make(map[string]bool, len(words))
+	for _, w := range words {
+		inSet[w] = true
+	}
+
+	// Candidate assassins are words with at least `needed` neighbors that are
+	// also present in the current word set.
+	var candidates []string
+	filtered := make(map[string][]string, len(words))
+	for _, w := range words {
+		var ns []string
+		for _, n := range neighbors[w] {
+			if n != w && inSet[n] {
+				ns = append(ns, n)
+			}
+		}
+		filtered[w] = ns
+		if len(ns) >= needed {
+			candidates = append(candidates, w)
+		}
+	}
+	if len(candidates) == 0 {
+		return "", nil, false
+	}
+
+	black = candidates[seedRnd.Intn(len(candidates))]
+
+	// Draw from a pool of the closest neighbors for variety. The pool is at
+	// least `needed` large so we can always fill the board.
+	pool := filtered[black]
+	poolSize := needed * 2
+	if poolSize > len(pool) {
+		poolSize = len(pool)
+	}
+	pool = pool[:poolSize]
+
+	perm := seedRnd.Perm(len(pool))
+	chosen := make([]string, 0, needed)
+	for _, i := range perm[:needed] {
+		chosen = append(chosen, pool[i])
+	}
+	return black, chosen, true
 }
 
 func shuffle(rnd *rand.Rand, teamAssignments []Team) {
